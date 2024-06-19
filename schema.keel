@@ -1,0 +1,27 @@
+// Visit https://docs.keel.so/ for documentation on how to get started
+
+model User {
+    fields {
+        identity Identity @unique
+        email Text?
+        legal_forname Text
+        legal_surname Text
+        display_name Text?
+        createdAt Timestamap?
+    }
+
+    actions {
+        create createUser() with (
+            email,
+            legal_forname,
+            legal_surname,
+            display_name?,
+        ) {
+            @set(user.identity = ctx.identity)
+        }
+
+        update claimUser() {
+            @set(user.identity = ctx.identity)
+        }
+    }
+}
