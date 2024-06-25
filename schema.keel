@@ -11,7 +11,7 @@ model StripeSubscription {
     organisation Organisation
     active Boolean @default(false)
     planId Text?
-    stripeCustomerId
+    stripeCustomerId Text?
     planName Text?
     invoices Invoice[]
   }
@@ -91,7 +91,6 @@ enum Permission {
     ViewBillingHistory
     ViewBillingSummary
     ManagePaymentMethods
-
 }
 
 model TeamMember {
