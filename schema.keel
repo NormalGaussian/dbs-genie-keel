@@ -1,27 +1,104 @@
-// Visit https://docs.keel.so/ for documentation on how to get started
+model Account {
+  fields {
+    identity Identity
+    active Boolean @default(true)
+    user User
+  }
+}
+
+model StripeSubscription {
+  fields {
+    organisation Organisation
+    active Boolean @default(false)
+    planId Text?
+    stripeCustomerId
+    planName Text?
+    invoices Invoice[]
+  }
+
+  actions {
+    write handleBilling(Any) returns (StripeWebhookResponse) {
+      @permission(expression: true) // TODO: this seems overly permissive
+    }
+  }
+}
+
+message StripeWebhookResponse {
+  received Boolean
+}
+
+// This table stores any users who have been added to the system
+//  by their email, but have not yet created an account
+//  any created account should be checked for pending invites
+model EmailInvite {
+    fields {
+        email Text
+        user User
+        expiresAt Timestamp?
+    }
+}
+
+// 
+model InviteCode {
+    fields {
+        code Text
+        user User
+        expiresAt Timestamp?
+    }
+    @unique([user, code])
+}
 
 model User {
     fields {
-        identity Identity @unique
-        email Text?
-        legal_forname Text
-        legal_surname Text
-        display_name Text?
-        createdAt Timestamap?
+        legalForename Text?
+        legalSurname Text?
+        displayName Text?
     }
+}
 
-    actions {
-        create createUser() with (
-            email,
-            legal_forname,
-            legal_surname,
-            display_name?,
-        ) {
-            @set(user.identity = ctx.identity)
-        }
+model Team {
+  fields {
+    displayName Text
+    members TeamMember[]
+    organisation Organisation
+  }
+}
 
-        update claimUser() {
-            @set(user.identity = ctx.identity)
-        }
+model Invoice {
+  fields {
+    billingAccount BillingAccount
+    periodStart Timestamp
+    periodEnd Timestamp
+    paid Boolean
+    invoiceId Text
+    paymentId Text?
+    paymentAt Timestamp?
+  }
+}
+
+model Organisation {
+    fields {
+        teams Team[]
+        invoices Invoice[]
+        stripeSubscription StripeSubscription[]
+        active Boolean
     }
+    
+}
+
+enum Permission {
+    ViewAuditHistory
+    ViewBillingHistory
+    ViewBillingSummary
+    ManagePaymentMethods
+
+}
+
+model TeamMember {
+  fields {
+    user User
+    team Team
+    permissions Permission[]
+  }
+  @unique([user, team])
 }
