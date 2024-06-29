@@ -1,41 +1,28 @@
 model Account {
+  // An account can be logged in to
+  // Users may only have one account
   fields {
     identity Identity
     active Boolean @default(true)
     user User
   }
-}
-
-model StripeSubscription {
-  fields {
-    organisation Organisation
-    active Boolean @default(false)
-    planId Text?
-    stripeCustomerId Text?
-    planName Text?
-    invoices Invoice[]
-  }
 
   actions {
-    write handleBilling(Any) returns (StripeWebhookResponse) {
-      @permission(expression: true) // TODO: this seems overly permissive
-    }
+
   }
 }
 
-message StripeWebhookResponse {
-  received Boolean
-}
-
-// This table stores any users who have been added to the system
-//  by their email, but have not yet created an account
-//  any created account should be checked for pending invites
 model EmailInvite {
-    fields {
-        email Text
-        user User
-        expiresAt Timestamp?
-    }
+  // Each row is a User who has been added to the system by an email address,
+  //  but does not yet have an account.
+  //  * Any created account should be checked for valid pending invites
+  //  * Invites should be regularly expired
+  //  * Two invites should not clash
+  fields {
+      email Text
+      user User
+      expiresAt Timestamp?
+  }
 }
 
 // 
@@ -54,6 +41,12 @@ model User {
         legalSurname Text?
         displayName Text?
     }
+
+    // Don't create a user directly
+    // Either:
+    // * Create an account, with a tied user
+    // * Create an email invite, with a tied user
+    // * Create a TeamMember, with a tied user
 }
 
 model Team {
@@ -78,27 +71,119 @@ model Invoice {
 }
 
 model Organisation {
-    fields {
-        teams Team[]
-        invoices Invoice[]
-        stripeSubscription StripeSubscription[]
-        active Boolean
-    }
-    
+  // An organisation is the unit at which billing occurs
+  // Teams within organisations do not have separate billing
+  fields {
+    teams Team[]
+    invoices Invoice[]
+    stripeSubscription StripeSubscription[]
+    active Boolean
+    members OrganisationMember[]
+  }   
 }
 
-enum Permission {
-    ViewAuditHistory
-    ViewBillingHistory
-    ViewBillingSummary
-    ManagePaymentMethods
+model OrganisationMember {
+  // Organisation Members have their permissions across all teams in an organisation
+  fields {
+    user User
+    organisation Organisation
+    permissions Permission[]
+  }
+  @unique([user, organisation])
 }
 
 model TeamMember {
+  // Team members have their permissions scoped to a single team
   fields {
     user User
     team Team
     permissions Permission[]
   }
   @unique([user, team])
+
+  actions {
+    create addUserToTeam(permissions) with (user.id, team.id)
+    
+    delete removeUserFromTeam() with (user.id, team.id) {}
+  }
+
+  // User can delete themselves
+  @permission(
+    expression: user.id == ctx.identity, // User can add themselves
+    actions: [
+      delete
+    ]
+  )
+
+  // User has ManageTeams permission on the team
+  @permission(
+    expression: team.members.some((member) => member.user.account.identity == ctx.identity && member.permissions.includes(Permission.ManageTeams)),
+    actions: [
+      addUserToTeam,
+      removeUserFromTeam
+    ]
+  )
+
+  // User has ManageTeams permission on the organisation that owns the team
+  @permission(expression:
+    team.organisation.members.some((member) => member.user.account.identity == ctx.identity && member.permissions.includes(Permission.ManageTeams)),
+    actions: [
+      addUserToTeam,
+      removeUserFromTeam  
+    ]
+  )
+}
+// INSERT INTO TeamMember (
+//   user, // user.id
+//   team, // team.id
+//   permissions
+// ) VALUES (
+//   $1, -- user.id
+//   $2, -- team.id
+//   $3  -- permissions (TEXT[])
+// )
+// WHERE user.id IN (SELECT tm.userId FROM TeamMember tm WHERE team = $2 AND "ManageTeams" in tm.permissions)
+// OR user.id IN (
+//   SELECT om.userId
+//   FROM OrganisationMember om
+//   JOIN Organisation o
+//     ON om.organisation = o.id
+//   WHERE team.id IN o.teams AND "ManageTeams" in om.permissions
+// )
+//
+
+
+enum Permission {
+
+  // Unused permissions
+  ViewUsers
+  ViewTeams
+  ManageUsers
+  ManageTeams
+  ViewAuditHistory
+  ViewBillingInvoices
+  ViewBillingSummary
+  ViewPaymentMethods
+  ManageBilling
+}
+
+model StripeSubscription {
+  fields {
+    organisation Organisation
+    active Boolean @default(false)
+    planId Text?
+    stripeCustomerId Text?
+    planName Text?
+    invoices Invoice[]
+  }
+
+  actions {
+    write handleBilling(Any) returns (StripeWebhookResponse) {
+      @permission(expression: true) // TODO: this seems overly permissive
+    }
+  }
+}
+
+message StripeWebhookResponse {
+  received Boolean
 }
